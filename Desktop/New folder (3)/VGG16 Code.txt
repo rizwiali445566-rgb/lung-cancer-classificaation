@@ -1,0 +1,199 @@
+"Code in Cell # 1"
+
+import os
+import pandas as pd
+import numpy as np
+import sys
+import seaborn as sb
+import tensorflow as tf
+import matplotlib.pyplot as plt
+from tensorflow import keras
+from google.colab import drive
+from collections import Counter
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.layers import Input, Flatten, Dense, Dropout,BatchNormalization
+from tensorflow.keras import layers, models, backend
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from keras.layers import Input,Dropout, Dense,GlobalAveragePooling2D
+from tensorflow.keras.applications import VGG16
+from tensorflow.keras.models import Model
+drive.mount('/content/gdrive')
+image_folder_path = '/content/gdrive/MyDrive/(Dataset) Lungs cancer/The IQ-OTHNCCD lung cancer dataset'
+
+"Code in Cell # 2"
+
+## batch specification
+batch_size = 50
+img_height = 300
+img_width = 300
+
+
+"Code in Cell # 3"
+
+# Import libraries for image processing
+import cv2  # Or from PIL import Image
+
+# Loop through image files in the folder and process them
+for filename in os.listdir(image_folder_path):
+  if filename.endswith(".jpg") or filename.endswith(".png"):  # Filter for image formats
+    image_path = os.path.join(image_folder_path, filename)
+    # Read the image using OpenCV (or PIL)
+    img = cv2.imread(image_path)
+
+
+"Code in Cell # 4"
+
+#### loading training set
+training_ds = tf.keras.preprocessing.image_dataset_from_directory(
+    image_folder_path,
+    validation_split=0.2,
+    subset= "training",
+    seed=42,
+    image_size= (img_height, img_width),
+    batch_size=batch_size
+    )
+
+"Code in Cell # 5"
+
+#### loading testing set
+testing_ds = tf.keras.preprocessing.image_dataset_from_directory(
+image_folder_path,
+    validation_split=0.2,
+    subset= "validation",
+    seed=42,
+    image_size= (img_height, img_width),
+    batch_size=batch_size
+
+)
+
+class_names = training_ds.class_names
+
+
+"Code in Cell # 6"
+
+class_names
+
+"Code in Cell # 7"
+
+plt.figure(figsize=(10, 10))
+for images, labels in training_ds.take(1):
+  for i in range(9):
+    ax = plt.subplot(3, 3, i + 1)
+    plt.imshow(images[i].numpy().astype("uint8"))
+    plt.title(class_names[labels[i]])
+    plt.grid('true')
+
+
+"Code in Cell # 8"
+
+unique,count=np.unique(training_ds,return_counts=True)
+plt.pie(x=count,labels=unique,autopct='%.0f%%')
+plt.xlabel('Target')
+plt.title('Target Class Distribution')
+plt.show()
+
+
+"Code in Cell # 9"
+
+VGG16 Model
+# Load the base model
+base_model = VGG16(weights='imagenet', include_top=False, input_shape=(img_height, img_width, 3))
+base_model.trainable = False  # Initially freeze the base model
+
+
+"Code in Cell # 10"
+
+# Freeze the VGG16 base model
+base_model.trainable = False
+
+# Create new model on top
+inputs = Input(shape=(img_height, img_width, 3))
+x = base_model(inputs, training=False)
+x = Flatten()(x)
+# Add additional Dense layers
+x = Dense(512, activation='relu')(x)  # Added Dense layer with 512 units
+x = Dense(256, activation='relu')(x)  # Existing Dense layer with 256 units
+x = Dense(128, activation='relu')(x)  # Added Dense layer with 128 units
+outputs = Dense(len(class_names), activation='softmax')(x)
+
+# Combine base model and new layers
+model = Model(inputs, outputs)
+
+
+"Code in Cell # 11"
+
+# Compile the model
+model = Model(inputs, outputs)
+optimizer = Adam(learning_rate=0.001)
+model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
+
+
+"Code in Cell # 12"
+
+model.compile(optimizer='adam',
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
+
+"Code in Cell # 13"
+
+# Train the model
+epochs = 1  # Specify the number of epochs
+history = model.fit(training_ds, validation_data=testing_ds, epochs=epochs)
+
+
+"Code in Cell # 14"
+
+# Evaluate the model
+vgg16_loss, vgg16_accuracy = model.evaluate(testing_ds)
+print(f'VGG16 Model accuracy: {vgg16_accuracy}')
+
+
+"Code in Cell # 15"
+
+model.summary()
+
+"Code in Cell # 16"
+
+# Extract accuracy and loss values from history
+acc = history.history['accuracy']
+val_acc = history.history['val_accuracy']
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+
+
+"Code in Cell # 17"
+
+# Plotting
+plt.figure(figsize=(8, 8))
+plt.subplot(2, 1, 1)
+plt.plot(range(epochs), acc, label='Training Accuracy')
+plt.plot(range(epochs), val_acc, label='Validation Accuracy')
+plt.legend(loc='lower right')
+plt.title('Training and Validation Accuracy')
+
+plt.subplot(2, 1, 2)
+plt.plot(range(epochs), loss, label='Training Loss')
+plt.plot(range(epochs), val_loss, label='Validation Loss')
+plt.legend(loc='upper right')
+plt.title('Training and Validation Loss')
+plt.show()
+
+# Display the maximum validation accuracy
+print("Maximum VGG-16 Validation Accuracy:", max(val_acc))
+
+
+"Code in Cell # 18"
+
+# Confusion matrix
+true_labels = []
+predictions = []
+for images, labels in testing_ds:
+    preds = model.predict(images)
+    predictions.extend(np.argmax(preds, axis=1))
+    true_labels.extend(labels.numpy())
+
+cm = confusion_matrix(true_labels, predictions)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
+disp.plot(cmap="Blues", xticks_rotation=45)
+plt.title('Confusion Matrix')
+plt.show()
